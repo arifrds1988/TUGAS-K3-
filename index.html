@@ -1,0 +1,734 @@
+<!-- Chosen Palette: Industrial Safety - Neutral Slate/Zinc background (#f4f4f5) for calmness, with functional safety colors: Signal Red (#ef4444), Safety Yellow (#eab308), Mandatory Blue (#3b82f6), and Safe Green (#22c55e) strictly used for semantic indicators. -->
+
+<!-- Application Structure Plan: 
+    The app is designed as a "Safety Officer's Tablet Interface" with a sidebar navigation and a main content area.
+    1. Dashboard (Overview): Provides a high-level summary of the current "High Risk" status and the proposed recovery timeline using charts and a Gantt-style list. This sets the urgency.
+    2. Visual Standards (Signs & Pipes): A searchable/filterable dictionary of safety signs and pipe codes. Users can filter by type (Warning, Mandatory, etc.) to learn meanings and risks. This replaces static lists with active exploration.
+    3. 5R Audit System: Transforms the theoretical 5R concept into an interactive tool. Users can flip between "Before/After" states to understand concepts and actually click through a live checklist to see a real-time "Audit Score" calculation.
+    4. Hazardous Materials (B3): An interactive GHS Label autopsy. Users hover over parts of the label to understand the legal requirements. 
+    5. Emergency Response: A step-by-step interactive wizard for the "Spill Response" procedure, breaking down the text into a logical flow.
+    Rationale: This structure moves from "Problem Recognition" (Dashboard) to "Knowledge Acquisition" (Signs/B3) to "Action/Tools" (5R/Emergency), mirroring the learning curve of a new employee or safety auditor.
+-->
+
+<!-- Visualization & Content Choices:
+    1. Dashboard - Current Risk Assessment: Doughnut Chart (Chart.js). Goal: Inform. Shows the breakdown of issues (Signs, Housekeeping, Chemicals) visually.
+    2. Dashboard - Action Plan: Vertical Timeline (HTML/Tailwind). Goal: Change. Visualizes the 4-week roadmap clearly.
+    3. 5R - Safety vs Productivity: Bar Chart (Chart.js). Goal: Compare. Visualizes the tangible benefits described in the text.
+    4. 5R - Audit Checklist: Interactive HTML Table with JS State. Goal: Organize/Engage. Calculates a score dynamically based on user input.
+    5. Signs - Filterable Grid: CSS Shapes & Unicode. Goal: Inform. NO SVG used. Uses CSS to create triangles/circles and Unicode for icons to ensure performance and compliance.
+    6. B3 Label - Interactive Hotspots: HTML Overlay. Goal: Inform. Explains the "Thinner" label components on hover.
+-->
+
+<!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Manajemen K3 & 5R - Bengkel Manufaktur</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f4f4f5; }
+        
+        /* Chart Container Styling Rules */
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px; /* Constraint */
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 350px;
+        }
+
+        /* Custom Shapes for Signs (CSS Only - No SVG) */
+        .sign-circle { border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+        .sign-triangle { 
+            width: 0; height: 0; 
+            border-left: 30px solid transparent; 
+            border-right: 30px solid transparent; 
+            border-bottom: 52px solid #eab308; 
+            position: relative;
+            display: flex; justify-content: center;
+        }
+        .sign-triangle::after {
+            content: ''; position: absolute; top: 6px; left: -26px;
+            width: 0; height: 0;
+            border-left: 26px solid transparent;
+            border-right: 26px solid transparent;
+            border-bottom: 45px solid black; 
+        }
+        .sign-triangle-content {
+            position: absolute; top: 25px; left: -10px; z-index: 10; color: #eab308; font-size: 20px; font-weight: bold;
+        }
+
+        /* Interactive Elements */
+        .nav-item.active { background-color: #e5e7eb; color: #1f2937; border-left: 4px solid #ef4444; }
+        .nav-item { transition: all 0.2s; }
+        .nav-item:hover { background-color: #f3f4f6; }
+
+        .hotspot:hover { outline: 2px solid #ef4444; background-color: rgba(239, 68, 68, 0.1); cursor: help; }
+        
+        /* Checkbox Custom */
+        .checklist-item input:checked + div { text-decoration: line-through; color: #9ca3af; }
+
+        /* Smooth Transitions */
+        .fade-in { animation: fadeIn 0.4s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="text-slate-800 h-screen flex overflow-hidden">
+
+    <!-- Sidebar Navigation -->
+    <aside class="w-64 bg-white shadow-lg flex-shrink-0 flex flex-col z-20 hidden md:flex">
+        <div class="p-6 border-b border-gray-100">
+            <h1 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <span class="text-2xl">🛡️</span> K3 System
+            </h1>
+            <p class="text-xs text-slate-500 mt-1">Bengkel Manufaktur</p>
+        </div>
+        <nav class="flex-1 overflow-y-auto py-4">
+            <button onclick="navigate('dashboard')" id="nav-dashboard" class="nav-item active w-full text-left px-6 py-3 text-sm font-medium text-slate-600">
+                📊 Dashboard Risiko
+            </button>
+            <button onclick="navigate('signs')" id="nav-signs" class="nav-item w-full text-left px-6 py-3 text-sm font-medium text-slate-600">
+                ⚠️ Rambu & Pipa
+            </button>
+            <button onclick="navigate('5r')" id="nav-5r" class="nav-item w-full text-left px-6 py-3 text-sm font-medium text-slate-600">
+                🧹 Audit 5R
+            </button>
+            <button onclick="navigate('chemicals')" id="nav-chemicals" class="nav-item w-full text-left px-6 py-3 text-sm font-medium text-slate-600">
+                ☠️ Label B3
+            </button>
+            <button onclick="navigate('emergency')" id="nav-emergency" class="nav-item w-full text-left px-6 py-3 text-sm font-medium text-slate-600">
+                🚨 Tanggap Darurat
+            </button>
+        </nav>
+        <div class="p-4 border-t border-gray-100 bg-gray-50">
+            <div class="text-xs font-semibold text-slate-400 uppercase mb-2">Status Audit</div>
+            <div class="flex items-center gap-2 text-red-600 font-bold bg-red-100 p-2 rounded">
+                <span>⚠️ HIGH RISK</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Mobile Header -->
+    <div class="md:hidden fixed top-0 w-full bg-white shadow-md z-30 flex items-center justify-between p-4">
+        <span class="font-bold">K3 Dashboard</span>
+        <button onclick="document.querySelector('aside').classList.toggle('hidden'); document.querySelector('aside').classList.toggle('absolute'); document.querySelector('aside').classList.toggle('h-full');" class="p-2 bg-gray-100 rounded">☰</button>
+    </div>
+
+    <!-- Main Content Area -->
+    <main id="main-content" class="flex-1 overflow-y-auto p-4 md:p-8 pt-20 md:pt-8 bg-zinc-50 relative">
+        
+        <!-- SECTION 1: DASHBOARD -->
+        <section id="dashboard" class="fade-in">
+            <header class="mb-8">
+                <h2 class="text-3xl font-bold text-slate-800">Ringkasan Evaluasi K3</h2>
+                <p class="text-slate-600 mt-2 max-w-3xl">
+                    Bengkel manufaktur ini saat ini dikategorikan sebagai <span class="font-bold text-red-600">RISIKO TINGGI</span>. 
+                    Laporan ini menyoroti defisiensi kritis dalam komunikasi visual, manajemen limbah, dan penanganan bahan kimia. 
+                    Dashboard ini merangkum area masalah utama dan rencana perbaikan prioritas.
+                </p>
+            </header>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <!-- Risk Chart -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <h3 class="font-semibold text-lg mb-4">Komposisi Masalah K3</h3>
+                    <div class="chart-container">
+                        <canvas id="riskChart"></canvas>
+                    </div>
+                    <p class="text-xs text-center text-gray-400 mt-2">Distribusi temuan masalah berdasarkan audit visual.</p>
+                </div>
+
+                <!-- Priority Action Plan -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col">
+                    <h3 class="font-semibold text-lg mb-4">Rencana Perbaikan Prioritas (4 Minggu)</h3>
+                    <div class="flex-1 overflow-y-auto space-y-4 pr-2">
+                        <!-- Week 1 -->
+                        <div class="flex gap-4">
+                            <div class="flex flex-col items-center">
+                                <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm">1</div>
+                                <div class="h-full w-0.5 bg-blue-100 my-1"></div>
+                            </div>
+                            <div class="pb-4">
+                                <h4 class="font-bold text-slate-700">Minggu 1: General Cleaning</h4>
+                                <p class="text-sm text-slate-500">Penerapan "Ringkas & Resik" massal. Pembuangan sampah logam dan pemisahan barang tidak terpakai (Low Cost).</p>
+                            </div>
+                        </div>
+                        <!-- Week 2 -->
+                        <div class="flex gap-4">
+                            <div class="flex flex-col items-center">
+                                <div class="w-8 h-8 rounded-full bg-yellow-100 text-yellow-600 flex items-center justify-center font-bold text-sm">2</div>
+                                <div class="h-full w-0.5 bg-gray-100 my-1"></div>
+                            </div>
+                            <div class="pb-4">
+                                <h4 class="font-bold text-slate-700">Minggu 2: Labeling B3</h4>
+                                <p class="text-sm text-slate-500">Cetak dan tempel label standar GHS pada semua jerigen kimia (Thinner, Oli Bekas).</p>
+                            </div>
+                        </div>
+                        <!-- Week 3 -->
+                        <div class="flex gap-4">
+                            <div class="flex flex-col items-center">
+                                <div class="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center font-bold text-sm">3</div>
+                                <div class="h-full w-0.5 bg-gray-100 my-1"></div>
+                            </div>
+                            <div class="pb-4">
+                                <h4 class="font-bold text-slate-700">Minggu 3: Visual & Marka</h4>
+                                <p class="text-sm text-slate-500">Cat ulang jalur lantai dan pasang rambu K3 baru (Glow in the dark) untuk jalur evakuasi.</p>
+                            </div>
+                        </div>
+                        <!-- Week 4 -->
+                        <div class="flex gap-4">
+                            <div class="flex flex-col items-center">
+                                <div class="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center font-bold text-sm">4</div>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-slate-700">Minggu 4: Edukasi</h4>
+                                <p class="text-sm text-slate-500">Briefing 15 menit ke operator tentang arti rambu dan label baru.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded shadow-sm">
+                <h4 class="font-bold text-red-700 flex items-center gap-2">⚠️ Risiko Fatal Teridentifikasi</h4>
+                <ul class="list-disc list-inside text-sm text-red-600 mt-2 space-y-1">
+                    <li>Kebutaan permanen (Area Bubut tanpa rambu kacamata).</li>
+                    <li>Amputasi jari (Area Mesin Berputar tanpa peringatan).</li>
+                    <li>Terjebak saat kebakaran (Jalur evakuasi tidak terlihat).</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- SECTION 2: SIGNS & PIPES -->
+        <section id="signs" class="hidden fade-in">
+            <header class="mb-8">
+                <h2 class="text-3xl font-bold text-slate-800">Standar Visual: Rambu & Pipa</h2>
+                <p class="text-slate-600 mt-2">
+                    Komunikasi visual yang efektif adalah pertahanan pertama. Di bawah ini adalah katalog standar rambu dan kode warna pipa yang wajib diterapkan di bengkel untuk mencegah kesalahan operator.
+                    Klik pada kartu untuk melihat detail risiko.
+                </p>
+            </header>
+
+            <!-- Filter Buttons -->
+            <div class="flex flex-wrap gap-2 mb-6">
+                <button onclick="filterSigns('all')" class="px-4 py-2 bg-slate-800 text-white rounded-full text-sm hover:bg-slate-700">Semua</button>
+                <button onclick="filterSigns('mandatory')" class="px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm hover:bg-blue-200">🔵 Wajib (Mandatory)</button>
+                <button onclick="filterSigns('warning')" class="px-4 py-2 bg-yellow-100 text-yellow-700 rounded-full text-sm hover:bg-yellow-200">🟡 Peringatan (Warning)</button>
+                <button onclick="filterSigns('prohibition')" class="px-4 py-2 bg-red-100 text-red-700 rounded-full text-sm hover:bg-red-200">🔴 Larangan (Prohibition)</button>
+                <button onclick="filterSigns('emergency')" class="px-4 py-2 bg-green-100 text-green-700 rounded-full text-sm hover:bg-green-200">🟢 Darurat (Emergency)</button>
+            </div>
+
+            <!-- Sign Grid -->
+            <div id="sign-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+                <!-- JS will populate this -->
+            </div>
+
+            <!-- Pipe Identification -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h3 class="font-bold text-xl mb-4 border-b pb-2">Standar Identifikasi Pipa (Fluida)</h3>
+                <p class="text-sm text-slate-500 mb-6">Pipa tanpa label adalah bahaya tersembunyi. Gunakan standar warna ASME A13.1 ini.</p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="flex items-center gap-4 p-3 bg-gray-50 rounded border border-gray-200">
+                        <div class="w-24 h-8 bg-red-600 rounded shadow flex items-center justify-center text-white text-xs font-bold">FIRE</div>
+                        <div>
+                            <div class="font-bold text-slate-700">Merah</div>
+                            <div class="text-xs text-slate-500">Khusus Pemadam (Hydrant/Sprinkler)</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4 p-3 bg-gray-50 rounded border border-gray-200">
+                        <div class="w-24 h-8 bg-yellow-400 rounded shadow flex items-center justify-center text-black text-xs font-bold">FLAMMABLE</div>
+                        <div>
+                            <div class="font-bold text-slate-700">Kuning</div>
+                            <div class="text-xs text-slate-500">Mudah Menyala (Gas, Minyak, Thinner)</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4 p-3 bg-gray-50 rounded border border-gray-200">
+                        <div class="w-24 h-8 bg-green-500 rounded shadow flex items-center justify-center text-white text-xs font-bold">WATER</div>
+                        <div>
+                            <div class="font-bold text-slate-700">Hijau</div>
+                            <div class="text-xs text-slate-500">Air (Pendingin, Air Bersih)</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4 p-3 bg-gray-50 rounded border border-gray-200">
+                        <div class="w-24 h-8 bg-blue-500 rounded shadow flex items-center justify-center text-white text-xs font-bold">AIR</div>
+                        <div>
+                            <div class="font-bold text-slate-700">Biru</div>
+                            <div class="text-xs text-slate-500">Udara Tekanan (Kompresor)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 3: 5R AUDIT -->
+        <section id="5r" class="hidden fade-in">
+            <header class="mb-8">
+                <h2 class="text-3xl font-bold text-slate-800">Sistem 5R: Tata Graha & Produktivitas</h2>
+                <p class="text-slate-600 mt-2">
+                    Bengkel yang berantakan adalah jebakan maut. Penerapan 5R (Ringkas, Rapi, Resik, Rawat, Rajin) bukan hanya soal kebersihan, 
+                    tetapi metode efisiensi untuk mengurangi waktu pencarian alat dan mendeteksi kerusakan mesin lebih dini.
+                </p>
+            </header>
+
+            <!-- 5R Tabs -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-8">
+                <div class="flex border-b overflow-x-auto">
+                    <button onclick="show5RTab('seiri')" class="px-6 py-4 font-semibold text-slate-700 border-b-2 border-transparent hover:bg-gray-50 focus:border-blue-500">1. Ringkas</button>
+                    <button onclick="show5RTab('seiton')" class="px-6 py-4 font-semibold text-slate-700 border-b-2 border-transparent hover:bg-gray-50 focus:border-blue-500">2. Rapi</button>
+                    <button onclick="show5RTab('seiso')" class="px-6 py-4 font-semibold text-slate-700 border-b-2 border-transparent hover:bg-gray-50 focus:border-blue-500">3. Resik</button>
+                    <button onclick="show5RTab('seiketsu')" class="px-6 py-4 font-semibold text-slate-700 border-b-2 border-transparent hover:bg-gray-50 focus:border-blue-500">4. Rawat</button>
+                    <button onclick="show5RTab('shitsuke')" class="px-6 py-4 font-semibold text-slate-700 border-b-2 border-transparent hover:bg-gray-50 focus:border-blue-500">5. Rajin</button>
+                </div>
+                <div id="5r-content" class="p-6">
+                    <!-- Dynamic Content -->
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Interactive Checklist -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-bold text-lg">Digital Audit Checklist</h3>
+                        <div class="text-2xl font-bold text-blue-600" id="audit-score">0%</div>
+                    </div>
+                    <div class="space-y-3" id="checklist-container">
+                        <!-- Checkboxes generated by JS -->
+                    </div>
+                    <button onclick="resetChecklist()" class="mt-4 text-sm text-slate-500 hover:text-slate-700 underline">Reset Checklist</button>
+                </div>
+
+                <!-- Benefits Chart -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <h3 class="font-bold text-lg mb-2">Dampak 5R</h3>
+                    <p class="text-sm text-slate-500 mb-4">Perbandingan efisiensi dan keselamatan sebelum dan sesudah penerapan.</p>
+                    <div class="chart-container">
+                        <canvas id="benefitChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 4: CHEMICALS (B3) -->
+        <section id="chemicals" class="hidden fade-in">
+            <header class="mb-8">
+                <h2 class="text-3xl font-bold text-slate-800">Manajemen Bahan B3</h2>
+                <p class="text-slate-600 mt-2">
+                    Penyimpanan Thinner dan Oli tanpa label berisiko fatal (tertukar, salah pemadaman). 
+                    Interaksikan dengan label di bawah ini untuk memahami Standar GHS (Globally Harmonized System).
+                </p>
+            </header>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+                <!-- Interactive Label -->
+                <div class="bg-white p-8 rounded-xl shadow-lg border border-gray-200 relative mx-auto w-full max-w-md">
+                    <div class="border-4 border-red-600 p-4 bg-white relative">
+                        <!-- Header / Pictogram -->
+                        <div class="flex flex-col items-center mb-6">
+                            <div class="w-32 h-32 border-4 border-red-600 rotate-45 flex items-center justify-center mb-4 hotspot" onmouseover="showB3Info('picto')" onmouseleave="hideB3Info()">
+                                <div class="-rotate-45 text-6xl">🔥</div>
+                            </div>
+                        </div>
+
+                        <!-- Signal Word -->
+                        <div class="text-center mb-2">
+                            <h2 class="text-3xl font-black text-red-600 tracking-wider hotspot inline-block px-2" onmouseover="showB3Info('signal')" onmouseleave="hideB3Info()">BAHAYA</h2>
+                        </div>
+
+                        <!-- Hazard Statement -->
+                        <div class="text-center mb-4">
+                            <p class="font-bold text-xl uppercase hotspot inline-block px-1" onmouseover="showB3Info('hazard')" onmouseleave="hideB3Info()">CAIRAN DAN UAP <br> AMAT MUDAH MENYALA</p>
+                        </div>
+
+                        <!-- Product Name -->
+                        <div class="text-center mb-6">
+                            <p class="font-medium text-lg text-slate-800 hotspot inline-block px-1" onmouseover="showB3Info('id')" onmouseleave="hideB3Info()">Thinner High Gloss</p>
+                        </div>
+
+                        <!-- Precautionary -->
+                        <div class="text-xs text-slate-600 border-t pt-4 hotspot" onmouseover="showB3Info('precaution')" onmouseleave="hideB3Info()">
+                            <p class="font-bold mb-1">PERNYATAAN KEHATI-HATIAN:</p>
+                            <p>Jauhkan dari panas dan percikan api. Gunakan APD lengkap. Simpan di tempat berventilasi baik.</p>
+                        </div>
+                    </div>
+                    <div class="absolute -bottom-4 right-4 bg-gray-800 text-white text-xs px-2 py-1 rounded">Arahkan kursor ke label 👆</div>
+                </div>
+
+                <!-- Info Panel -->
+                <div class="bg-blue-50 p-6 rounded-xl border border-blue-100 h-full">
+                    <h3 class="font-bold text-xl text-blue-800 mb-4">Keterangan Elemen Label</h3>
+                    <div id="b3-info-box">
+                        <p class="text-slate-600 italic">Arahkan kursor pada elemen label di samping untuk melihat penjelasan detail fungsi dan maknanya sesuai aturan K3.</p>
+                    </div>
+                    
+                    <div class="mt-8 pt-6 border-t border-blue-200">
+                        <h4 class="font-bold text-blue-800 mb-2">Makna Simbol Bahaya Lainnya:</h4>
+                        <ul class="space-y-2">
+                            <li class="flex items-center gap-3">
+                                <span class="text-2xl w-8 text-center">💀</span>
+                                <span class="text-sm text-slate-700"><b>Toxic (Beracun):</b> Mematikan jika tertelan/terhirup (Pestisida, Sianida).</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <span class="text-2xl w-8 text-center">🧪</span>
+                                <span class="text-sm text-slate-700"><b>Corrosive (Korosif):</b> Merusak jaringan kulit dan logam (Air Aki).</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 5: EMERGENCY -->
+        <section id="emergency" class="hidden fade-in">
+            <header class="mb-8">
+                <h2 class="text-3xl font-bold text-slate-800">Tanggap Darurat Tumpahan (Spill Response)</h2>
+                <p class="text-slate-600 mt-2">
+                    Risiko tumpahan oli dan thinner sangat tinggi. Ikuti prosedur 5 langkah ini untuk mencegah pencemaran dan kebakaran.
+                </p>
+            </header>
+
+            <div class="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden max-w-4xl mx-auto">
+                <div class="p-8">
+                    <div class="flex justify-between items-center mb-8">
+                        <h3 id="step-title" class="text-2xl font-bold text-slate-800">Langkah 1: Amankan Area</h3>
+                        <span id="step-indicator" class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-bold">1 / 5</span>
+                    </div>
+                    
+                    <div class="flex flex-col md:flex-row gap-8 items-center mb-8">
+                        <div id="step-visual" class="w-full md:w-1/3 h-48 bg-slate-100 rounded-lg flex items-center justify-center text-6xl">
+                            🚫
+                        </div>
+                        <div class="md:w-2/3">
+                            <p id="step-desc" class="text-lg text-slate-600 leading-relaxed">
+                                Segera pasang rambu "Awas Licin" atau "Dilarang Melintas". Isolasi area agar orang lain tidak terpeleset atau menyebarkan tumpahan dengan sepatu mereka.
+                            </p>
+                            <div class="mt-4 p-3 bg-yellow-50 text-yellow-800 text-sm rounded border border-yellow-100">
+                                💡 <b>Tip:</b> Prioritaskan keselamatan manusia sebelum menangani tumpahan.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-between pt-6 border-t border-gray-100">
+                        <button onclick="prevStep()" id="btn-prev" class="px-6 py-2 rounded-lg text-slate-500 hover:bg-gray-100 disabled:opacity-50" disabled>⬅️ Kembali</button>
+                        <button onclick="nextStep()" id="btn-next" class="px-6 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">Lanjut ➡️</button>
+                    </div>
+                </div>
+                <div class="bg-gray-50 p-4 text-center text-xs text-slate-400">
+                    Pastikan Spill Kit tersedia di area penyimpanan B3.
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        // --- State Management ---
+        const state = {
+            currentSection: 'dashboard',
+            current5R: 'seiri',
+            currentStep: 0,
+            checklist: { 0: false, 1: false, 2: false, 3: false }
+        };
+
+        // --- Data: 5R Content ---
+        const content5R = {
+            seiri: {
+                title: "1. Ringkas (Seiri)",
+                desc: "Memisahkan barang yang diperlukan dan tidak diperlukan. Limbah logam (scrap) harus segera dipisahkan dari bahan baku.",
+                before: "Besi tua, potongan logam, dan sampah bercampur dengan bahan baku. Lantai penuh barang tak berguna.",
+                after: "Hanya barang yang diperlukan untuk pekerjaan hari ini yang ada di area kerja. Limbah dipisahkan."
+            },
+            seiton: {
+                title: "2. Rapi (Seiton)",
+                desc: "Menata barang yang diperlukan agar mudah ditemukan. Gunakan shadow board untuk kunci-kunci mesin.",
+                before: "Kunci pas, palu, dan obeng berserakan di meja atau lantai. Waktu cari alat: 10-15 menit.",
+                after: "Setiap alat punya tempat khusus (Shadow Board). Waktu cari alat: < 30 detik.",
+            },
+            seiso: {
+                title: "3. Resik (Seiso)",
+                desc: "Membersihkan tempat kerja dari debu, oli, dan sisa potongan logam setiap hari setelah shift.",
+                before: "Lantai hitam penuh oli, debu logam menumpuk di mesin. Risiko terpeleset tinggi.",
+                after: "Lantai bersih, kering, dan tidak licin. Mesin bebas debu. Kebocoran oli segera terlihat."
+            },
+            seiketsu: {
+                title: "4. Rawat (Seiketsu)",
+                desc: "Menjaga standar 3R di atas secara berkelanjutan. Adanya prosedur tetap (SOP) dan jadwal piket.",
+                before: "Pembersihan hanya dilakukan saat ada audit atau kunjungan bos.",
+                after: "Standar kebersihan menjadi bagian dari prosedur kerja harian. Ada visual control."
+            },
+            shitsuke: {
+                title: "5. Rajin (Shitsuke)",
+                desc: "Membiasakan diri mengikuti aturan K3 tanpa perlu diawasi. Membangun budaya disiplin.",
+                before: "Operator hanya pakai APD saat diawasi supervisor.",
+                after: "Operator sadar K3 adalah kebutuhan, bukan paksaan. Saling mengingatkan."
+            }
+        };
+
+        // --- Data: Signs ---
+        const signsData = [
+            { type: 'mandatory', icon: '🥽', color: 'bg-blue-600', text: 'Wajib Kacamata', detail: 'Melindungi mata dari geram panas mesin bubut.', risk: 'Kebutaan permanen.' },
+            { type: 'mandatory', icon: '⛑', color: 'bg-blue-600', text: 'Wajib Helm', detail: 'Melindungi kepala dari benturan material.', risk: 'Cedera kepala fatal.' },
+            { type: 'warning', icon: '⚠', color: 'bg-yellow-400 text-black', text: 'Awas Terjepit', detail: 'Bahaya mesin berputar. Dilarang pakai sarung tangan kain.', risk: 'Amputasi jari/tangan.' },
+            { type: 'warning', icon: '⚡', color: 'bg-yellow-400 text-black', text: 'Tegangan Tinggi', detail: 'Panel listrik mesin frais.', risk: 'Sengatan listrik/kematian.' },
+            { type: 'prohibition', icon: '⛔', color: 'bg-red-600', text: 'Dilarang Masuk', detail: 'Hanya operator berwenang.', risk: 'Kecelakaan bagi yang tidak terlatih.' },
+            { type: 'emergency', icon: '🏃', color: 'bg-green-600', text: 'Jalur Evakuasi', detail: 'Arah keluar saat darurat.', risk: 'Terjebak saat kebakaran.' },
+            { type: 'emergency', icon: '💊', color: 'bg-green-600', text: 'Kotak P3K', detail: 'Pertolongan pertama.', risk: 'Luka kecil menjadi infeksi parah.' }
+        ];
+
+        // --- Data: Spill Steps ---
+        const spillSteps = [
+            { title: "Langkah 1: Amankan Area", icon: "🚫", desc: "Pasang rambu 'Awas Licin' atau 'Dilarang Melintas'. Isolasi area agar tidak ada yang terpeleset." },
+            { title: "Langkah 2: Bendung (Containment)", icon: "🧱", desc: "Gunakan 'absorbent sock' (sosis penyerap) di sekeliling tumpahan agar oli tidak mengalir ke selokan air hujan." },
+            { title: "Langkah 3: Serap (Absorb)", icon: "🧽", desc: "Taburkan serbuk gergaji atau pasir khusus (spill dry) di atas tumpahan oli untuk menyerap cairan." },
+            { title: "Langkah 4: Bersihkan (Clean Up)", icon: "🧹", desc: "Sapu pasir yang sudah menyerap minyak. Masukkan ke dalam kantong plastik kuning (Limbah B3)." },
+            { title: "Langkah 5: Lapor", icon: "📝", desc: "Catat kejadian tumpahan dalam log book K3 sebagai bahan evaluasi untuk mencegah terulang." }
+        ];
+
+        // --- Data: Checklist Items ---
+        const checklistItems = [
+            "Mesin Bubut: Kunci Chuck dilepas saat stop",
+            "Lantai: Bersih dari tumpahan oli",
+            "Rak Alat: Kunci lengkap sesuai shadow board",
+            "Jalur Jalan: Marka kuning terlihat jelas"
+        ];
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initCharts();
+            renderSigns('all');
+            show5RTab('seiri');
+            renderChecklist();
+            navigate('dashboard');
+        });
+
+        // --- Navigation Logic ---
+        function navigate(sectionId) {
+            // Hide all sections
+            document.querySelectorAll('main > section').forEach(el => el.classList.add('hidden'));
+            // Show target
+            document.getElementById(sectionId).classList.remove('hidden');
+            
+            // Update Nav UI
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active', 'bg-gray-100', 'border-l-4', 'border-red-500'));
+            const activeNav = document.getElementById(`nav-${sectionId}`);
+            if(activeNav) activeNav.classList.add('active');
+
+            // Scroll to top
+            document.getElementById('main-content').scrollTop = 0;
+        }
+
+        // --- 5R Logic ---
+        function show5RTab(key) {
+            const data = content5R[key];
+            const html = `
+                <div class="animate-pulse-once">
+                    <h3 class="text-xl font-bold text-slate-800 mb-2">${data.title}</h3>
+                    <p class="text-slate-600 mb-6">${data.desc}</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="p-4 bg-red-50 rounded border border-red-100">
+                            <div class="font-bold text-red-600 mb-2">❌ KONDISI BURUK (Before)</div>
+                            <p class="text-sm text-slate-700">${data.before}</p>
+                        </div>
+                        <div class="p-4 bg-green-50 rounded border border-green-100">
+                            <div class="font-bold text-green-600 mb-2">✅ KONDISI BAIK (After)</div>
+                            <p class="text-sm text-slate-700">${data.after}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('5r-content').innerHTML = html;
+        }
+
+        function renderChecklist() {
+            const container = document.getElementById('checklist-container');
+            container.innerHTML = checklistItems.map((item, index) => `
+                <label class="checklist-item flex items-center gap-3 p-3 bg-gray-50 rounded border cursor-pointer hover:bg-gray-100">
+                    <input type="checkbox" onchange="updateScore(${index}, this.checked)" ${state.checklist[index] ? 'checked' : ''} class="w-5 h-5 text-blue-600 rounded focus:ring-blue-500">
+                    <div class="text-sm text-slate-700 select-none">${item}</div>
+                </label>
+            `).join('');
+        }
+
+        function updateScore(index, checked) {
+            state.checklist[index] = checked;
+            const total = checklistItems.length;
+            const active = Object.values(state.checklist).filter(Boolean).length;
+            const percentage = Math.round((active / total) * 100);
+            
+            document.getElementById('audit-score').innerText = `${percentage}%`;
+            document.getElementById('audit-score').className = `text-2xl font-bold ${percentage === 100 ? 'text-green-600' : percentage > 50 ? 'text-yellow-600' : 'text-red-600'}`;
+        }
+
+        function resetChecklist() {
+            state.checklist = { 0: false, 1: false, 2: false, 3: false };
+            renderChecklist();
+            updateScore(0, false);
+        }
+
+        // --- Sign Logic ---
+        function filterSigns(type) {
+            renderSigns(type);
+        }
+
+        function renderSigns(filterType) {
+            const grid = document.getElementById('sign-grid');
+            grid.innerHTML = '';
+            
+            const filtered = filterType === 'all' ? signsData : signsData.filter(s => s.type === filterType);
+            
+            filtered.forEach(sign => {
+                let shapeHTML = '';
+                if(sign.type === 'warning') {
+                    shapeHTML = `<div class="sign-triangle"><div class="sign-triangle-content text-black">${sign.icon}</div></div>`;
+                } else if (sign.type === 'prohibition') {
+                    shapeHTML = `<div class="sign-circle w-16 h-16 bg-white border-4 border-red-600 relative overflow-hidden">
+                        <div class="text-2xl z-10 text-black">${sign.icon}</div>
+                        <div class="absolute w-full h-1 bg-red-600 rotate-45 top-1/2"></div>
+                    </div>`;
+                } else {
+                    // Mandatory & Emergency = Square/Circle solid
+                    const rounded = sign.type === 'mandatory' ? 'rounded-full' : 'rounded-md';
+                    shapeHTML = `<div class="w-16 h-16 ${sign.color} ${rounded} flex items-center justify-center text-3xl text-white shadow-md">${sign.icon}</div>`;
+                }
+
+                const card = document.createElement('div');
+                card.className = 'bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow cursor-pointer group';
+                card.innerHTML = `
+                    <div class="flex items-center gap-4">
+                        <div class="flex-shrink-0">${shapeHTML}</div>
+                        <div>
+                            <h4 class="font-bold text-slate-800">${sign.text}</h4>
+                            <p class="text-xs text-slate-500 group-hover:hidden">Klik untuk detail</p>
+                        </div>
+                    </div>
+                    <div class="mt-4 pt-4 border-t border-gray-100 hidden group-hover:block fade-in bg-gray-50 -mx-4 -mb-4 p-4 rounded-b-xl">
+                        <p class="text-xs text-slate-600 mb-1"><b>Makna:</b> ${sign.detail}</p>
+                        <p class="text-xs text-red-600"><b>Risiko:</b> ${sign.risk}</p>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        // --- B3 Label Logic ---
+        const b3Info = {
+            picto: { title: "Piktogram GHS", text: "Gambar dalam belah ketupat merah. Simbol Api berarti 'Flammable' (Mudah Menyala). Wajib ada agar bahaya dikenali secara visual instan." },
+            signal: { title: "Kata Sinyal (Signal Word)", text: "'BAHAYA' digunakan untuk risiko level tinggi. 'PERINGATAN' untuk level sedang. Memberitahu tingkat keparahan risiko." },
+            hazard: { title: "Pernyataan Bahaya", text: "Menjelaskan sifat fisik bahaya. Contoh: 'Cairan dan uap amat mudah menyala' atau 'Dapat menyebabkan kanker'." },
+            id: { title: "Identitas Produk", text: "Nama kimia teknis atau nama dagang yang jelas. Mencegah tertukarnya bahan (misal Thinner dikira Air)." },
+            precaution: { title: "Pernyataan Kehati-hatian", text: "Langkah mitigasi wajib: Cara penyimpanan, APD yang harus dipakai, dan respons jika terpapar." }
+        };
+
+        function showB3Info(key) {
+            const info = b3Info[key];
+            const box = document.getElementById('b3-info-box');
+            box.innerHTML = `
+                <div class="fade-in">
+                    <h4 class="font-bold text-blue-800 mb-1">${info.title}</h4>
+                    <p class="text-slate-700 text-sm">${info.text}</p>
+                </div>
+            `;
+        }
+
+        function hideB3Info() {
+            document.getElementById('b3-info-box').innerHTML = `<p class="text-slate-600 italic">Arahkan kursor pada elemen label di samping untuk melihat penjelasan detail fungsi dan maknanya sesuai aturan K3.</p>`;
+        }
+
+        // --- Emergency Logic ---
+        function renderStep() {
+            const step = spillSteps[state.currentStep];
+            document.getElementById('step-title').innerText = step.title;
+            document.getElementById('step-desc').innerText = step.desc;
+            document.getElementById('step-visual').innerText = step.icon;
+            document.getElementById('step-indicator').innerText = `${state.currentStep + 1} / 5`;
+            
+            document.getElementById('btn-prev').disabled = state.currentStep === 0;
+            document.getElementById('btn-next').innerText = state.currentStep === 4 ? "Selesai" : "Lanjut ➡️";
+            document.getElementById('btn-next').disabled = state.currentStep === 4;
+            
+            if (state.currentStep === 4) {
+                 document.getElementById('btn-next').innerText = "Selesai (Kembali ke Awal)";
+                 document.getElementById('btn-next').onclick = () => { state.currentStep = 0; renderStep(); document.getElementById('btn-next').onclick = nextStep; };
+                 document.getElementById('btn-next').disabled = false;
+            }
+        }
+
+        function nextStep() {
+            if(state.currentStep < 4) {
+                state.currentStep++;
+                renderStep();
+            }
+        }
+
+        function prevStep() {
+            if(state.currentStep > 0) {
+                state.currentStep--;
+                renderStep();
+            }
+        }
+
+        // --- Chart.js Initialization ---
+        function initCharts() {
+            // Risk Chart
+            const ctxRisk = document.getElementById('riskChart').getContext('2d');
+            new Chart(ctxRisk, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Rambu & Visual', 'Tata Graha (5R)', 'Bahan Kimia (B3)'],
+                    datasets: [{
+                        data: [40, 30, 30], // Estimated split based on report
+                        backgroundColor: ['#eab308', '#3b82f6', '#ef4444'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+
+            // Benefit Chart
+            const ctxBenefit = document.getElementById('benefitChart').getContext('2d');
+            new Chart(ctxBenefit, {
+                type: 'bar',
+                data: {
+                    labels: ['Sebelum 5R', 'Sesudah 5R'],
+                    datasets: [
+                        {
+                            label: 'Waktu Cari Alat (Menit)',
+                            data: [15, 0.5],
+                            backgroundColor: '#ef4444'
+                        },
+                        {
+                            label: 'Risiko Kecelakaan (Skala 1-10)',
+                            data: [9, 2],
+                            backgroundColor: '#22c55e'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+            
+            // Initial Step Render
+            renderStep();
+        }
+
+    </script>
+</body>
+</html>
